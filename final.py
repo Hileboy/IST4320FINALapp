@@ -33,7 +33,7 @@ def calculate():
     num2 = entry_num2.get()
     result = perform_calculation(operation, num1, num2)
     result_label.config(text=f"Result: {result}")
-    if isinstance(result, (int, float)):
+    if isinstance(result, float) or isinstance(result, int):
         save_result(result)
 
 def clear_fields():
@@ -44,51 +44,35 @@ def clear_fields():
     entry_num1.focus()
 
 def save_result(result):
-    conn = sqlite3.connect('calculator.db')
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY AUTOINCREMENT, value REAL)")
-    cursor.execute("INSERT INTO results (value) VALUES (?)", (result,))
-    cursor.execute("SELECT id, value FROM results ORDER BY id DESC LIMIT 5")
-    recent = cursor.fetchall()
+    conn.execute("INSERT INTO results (value) VALUES (?)", (result,))
+    conn.commit    ()
+    update_saved_results()
+
+def update_saved_results():
+    for widget in saved_results_frame.winfo_children():
+        widget.destroy()
+    cursor = conn.execute("SELECT id, value FROM results")
+    for row in cursor.fetchall():
+        btn = ttk.Button(saved_results_frame, text=row[1], command=lambda val=row[1]: reuse_result(val))
+        btn.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+def reuse_result(value):
+    entry_num1.delete(0, tk.END)
+    entry_num1.insert(0, str(value))
+    entry_num2.focus()
+
+def on_exit():
+    conn.execute("DELETE FROM results")
     conn.commit()
     conn.close()
-    update_saved_answers(recent)
-
-def load_recent_results():
-    conn = sqlite3.connect('calculator.db')
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS results (id INTEGER PRIMARY KEY AUTOINCREMENT, value REAL)")
-    cursor.execute("SELECT id, value FROM results ORDER BY id DESC LIMIT 5")
-    recent = cursor.fetchall()
-    conn.close()
-    return recent
-
-def update_saved_answers(recent):
-    for widget in saved_answers_frame.winfo_children():
-        widget.destroy()
-    ttk.Label(saved_answers_frame, text="Recent Answers:").grid(row=0, column=0, sticky=tk.W, pady=(0,5))
-    for idx, (id, value) in enumerate(recent, start=1):
-        btn = ttk.Button(saved_answers_frame, text=str(value), command=lambda val=value: use_saved_value(val))
-        btn.grid(row=idx, column=0, sticky=tk.W, pady=2)
-
-def use_saved_value(value):
-    focused_widget = root.focus_get()
-    if focused_widget == entry_num1:
-        entry_num1.delete(0, tk.END)
-        entry_num1.insert(0, str(value))
-    elif focused_widget == entry_num2:
-        entry_num2.delete(0, tk.END)
-        entry_num2.insert(0, str(value))
-    else:
-        entry_num2.delete(0, tk.END)
-        entry_num2.insert(0, str(value))
+    root.destroy()
 
 root = tk.Tk()
 root.title("Simple Calculator App")
 
 menubar = tk.Menu(root)
 filemenu = tk.Menu(menubar, tearoff=0)
-filemenu.add_command(label="Exit", command=root.quit)
+filemenu.add_command(label="Exit", command=on_exit)
 menubar.add_cascade(label="File", menu=filemenu)
 root.config(menu=menubar)
 
@@ -121,15 +105,25 @@ clear_button.grid(column=1, row=0, padx=5)
 result_label = ttk.Label(frame, text="Result:")
 result_label.grid(column=0, row=4, columnspan=2)
 
-saved_answers_frame = ttk.Frame(frame)
-saved_answers_frame.grid(column=0, row=5, columnspan=2, pady=10, sticky=tk.W)
+saved_label = ttk.Label(frame, text="Saved Results:")
+saved_label.grid(column=0, row=5, columnspan=2, sticky=tk.W, pady=(10, 0))
 
-recent_results = load_recent_results()
-update_saved_answers(recent_results)
+saved_results_frame = ttk.Frame(frame)
+saved_results_frame.grid(column=0, row=6, columnspan=2, sticky=(tk.W, tk.E))
+
+conn = sqlite3.connect(":memory:")
+conn.execute("""
+    CREATE TABLE results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        value REAL NOT NULL
+    )
+""")
 
 for child in frame.winfo_children():
     child.grid_configure(padx=5, pady=5)
 
 entry_num1.focus()
+update_saved_results()
 
+root.protocol("WM_DELETE_WINDOW", on_exit)
 root.mainloop()
